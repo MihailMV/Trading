@@ -30,7 +30,7 @@ class Data:
     }
 
     def __init__(self):
-        self.con = sl.connect(self.DB_NAME)
+        self.con = sl.connect(self.DB_NAME, check_same_thread=False)
 
         for table in self.TABLES:
             self.__checking_table(table, self.TABLES[table])
@@ -41,10 +41,25 @@ class Data:
         self.con.execute(sql)
 
     def dataframe_to_table(self, table_name, df):
-        df.to_sql(name=table_name, con=self.con, if_exists='append', index=False)
+        try:
+            df.to_sql(name=table_name, con=self.con, if_exists='append', index=False)
+            result = True
+        except sl.IntegrityError as e:
+            print(f'Нарушена реляционная целостность базы данных. {e}')
+            result = False
+        finally:
+            return result
 
     def get_table(self, table_name) -> pd.DataFrame:
         return pd.read_sql(sql=f'select * from {table_name}', con=self.con)
 
-
+    def get_stocks(self) -> pd.DataFrame:
+        sql = """
+            select m.market_name, s.trade_code, s.id_stock, max(p.tradedate) as max_tradedate
+            from markets as m 
+                join stocks as s on m.id_market = s.id_market
+                left join prices as p on s.id_stock = p.id_stock
+            group by m.market_name, s.trade_code, s.id_stock
+            """
+        return pd.read_sql(sql=sql, con=self.con, parse_dates={"max_tradedate":  {"errors": "ignore"}})
 
